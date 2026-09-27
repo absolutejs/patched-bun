@@ -15,21 +15,45 @@ Only the patch and the scripts that build and release it. Bun's source is fetche
 commit ([`VERSION`](VERSION)) into `~/.cache/patched-bun/`, outside this repo, and the patches are
 applied fresh on every build. Binaries are attached to this repo's GitHub releases.
 
+## Platforms
+
+Every platform Bun's own release ships, built the way Bun builds them: all cross-compiled from one
+Linux machine (Bun's release host does the same, see `.buildkite/ci.mjs` `buildPlatforms`), release
+build type, LTO where Bun enables it, x64 targeting the nehalem baseline, same zip names and layout.
+
+| Zip | | Zip | |
+|---|---|---|---|
+| `bun-linux-x64` | glibc | `bun-darwin-aarch64` | Apple Silicon |
+| `bun-linux-aarch64` | glibc | `bun-darwin-x64` | Intel Mac |
+| `bun-linux-x64-musl` | Alpine | `bun-windows-x64` | |
+| `bun-linux-aarch64-musl` | Alpine | `bun-windows-aarch64` | |
+| `bun-linux-x64-android` | | `bun-freebsd-x64` | |
+| `bun-linux-aarch64-android` | | `bun-freebsd-aarch64` | |
+
+Each also has a `-profile` zip (unstripped binary with symbols), as Bun's release does.
+
+Differences from Bun's official binaries: macOS builds carry the build's ad-hoc signature (with
+Bun's JIT entitlements) rather than a Developer ID signature, and Windows builds are not
+Authenticode-signed. Both run normally when installed by the AbsoluteJS CLI or PAAS; a browser
+download may show a Gatekeeper or SmartScreen prompt. Bun's link-order file (a small startup
+optimization traced in Bun's CI) is not used.
+
 ## Who uses it
 
-- **AbsoluteJS CLI**: on stock Bun, `absolute dev` offers to install the release into its own
-  cache (Install now / Ask later / Don't ask again). Your `bun` on PATH is never touched; the CLI
-  runs the dev server on the patched binary once it is installed.
-- **PAAS images** (Studio, control plane): install the release binary, checked against
+- **AbsoluteJS CLI**: on stock Bun, `absolute dev` offers to install the release for your platform
+  into its own cache (Install now / Ask later / Don't ask again). Your `bun` on PATH is never
+  touched; the CLI runs the dev server on the patched binary once it is installed.
+- **PAAS images** (Studio, control plane): install the linux release, checked against
   `SHASUMS256.txt`.
 
-## Build and release (Linux x64, from this machine, no CI)
+## Build and release (from a Linux x64 machine, no CI)
 
 ```bash
-scripts/preflight.sh   # toolchain + memory/disk check; prints anything to install
-scripts/build.sh       # fetch + patch source, release build, LTO off, JOBS=4 (~1-2 h)
-scripts/verify.sh      # version, reactFastRefresh on/off/non-JSX, Bun's transpiler tests
-scripts/release.sh     # zip + SHA-256, push this repo, GitHub release
+sudo scripts/setup-cross.sh   # once: macOS SDK, Windows sysroot, glibc/musl/Android/FreeBSD sysroots (Bun's own installers)
+scripts/preflight.sh          # toolchain, memory and disk check
+scripts/build.sh              # every target; TARGETS="linux-x64 darwin-aarch64" for a subset
+scripts/verify.sh             # formats, React refresh behavior (native, and Docker for musl/arm64), checksums
+scripts/release.sh            # push this repo, GitHub release with every zip + SHASUMS256.txt
 ```
 
 ## When upstream ships the fix

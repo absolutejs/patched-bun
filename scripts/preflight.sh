@@ -12,12 +12,15 @@ need go "sudo apt install golang"
 need ruby "sudo apt install ruby-full"
 need libtoolize "sudo apt install libtool libtool-bin"
 need pkg-config "sudo apt install pkg-config"
+need nasm "sudo apt install nasm"
+need xz "sudo apt install xz-utils"
+need zip "sudo apt install zip"
 need rustup "https://rustup.rs"
 need bun "stock bun is used to run the build scripts"
 if command -v clang-21 >/dev/null; then clang-21 --version | head -1 | grep -q '21\.1\.8' || echo "  note: Bun asks for LLVM 21.1.8; found $(clang-21 --version | head -1)"; fi
 free_gb=$(free -g | awk '/^Mem:/{print $7}')
 disk_gb=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
-echo "Resources: ${free_gb}GB memory available, ${disk_gb}GB disk free (need ~10GB disk; close other heavy work first)"
-[ "$disk_gb" -ge 15 ] || { echo "  not enough disk"; ok=0; }
+echo "Resources: ${free_gb}GB memory available, ${disk_gb}GB disk free (budget ~10GB per target, ~120GB for all 12; close other heavy work first)"
+[ "$disk_gb" -ge 150 ] || { echo "  not enough disk"; ok=0; }
 [ "$free_gb" -ge 8 ] || echo "  warning: under 8GB available memory; the build may be killed. Close other agents, browsers and dev servers."
 [ $ok = 1 ] && echo "Ready to build." || { echo "Install the missing pieces, then rerun."; exit 1; }
