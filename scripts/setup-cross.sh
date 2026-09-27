@@ -14,6 +14,12 @@ user_home="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
 PATCHED_BUN_SOURCE="${PATCHED_BUN_SOURCE:-$user_home/.cache/patched-bun/bun-v1.4.0}"
 export PATCHED_BUN_SOURCE
 . "$(dirname "$0")/env.sh"
+# Bun's installers look tools up on PATH (`require bun`); root's PATH has
+# neither your bun nor rustup, so put your own toolchain first.
+export PATH="$user_home/.bun/bin:$user_home/.cargo/bin:/usr/lib/llvm-21/bin:$PATH"
+command -v bun >/dev/null || { echo "bun not found in $user_home/.bun/bin"; exit 1; }
+# Fetch Bun's helper scripts (xmac.mjs) from the pinned commit, not Bun's main branch.
+export BUN_BOOTSTRAP_REPO_REF="$UPSTREAM_COMMIT"
 
 sudo -u "$SUDO_USER" "$ROOT/scripts/source.sh" >/dev/null
 bootstrap="$SOURCE_DIR/scripts/bootstrap.sh"
@@ -30,7 +36,7 @@ check_package_manager
 # Bun gates these on its CI build host; this machine is ours.
 ci=1
 
-install_packages nasm ruby-full libtool libtool-bin xz-utils unzip zip file binutils-aarch64-linux-gnu
+install_packages nasm ruby-full libtool libtool-bin xz-utils unzip zip file jq skopeo binutils-aarch64-linux-gnu
 install_macos_sdk
 install_windows_sysroot
 install_linux_glibc_sysroot
