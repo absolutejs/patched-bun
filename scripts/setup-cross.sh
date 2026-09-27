@@ -26,7 +26,21 @@ bootstrap="$SOURCE_DIR/scripts/bootstrap.sh"
 [ "$(tail -1 "$bootstrap")" = 'main "$@"' ] || { echo "Bun's bootstrap.sh changed shape; review this script."; exit 1; }
 functions="$(mktemp)"
 trap 'rm -f "$functions"' EXIT
-sed '$d' "$bootstrap" > "$functions"
+# FreeBSD moves end-of-life releases (14.3, which Bun 1.4.0 pins) off
+# download.freebsd.org to its archive server; use the archive when needed.
+sed -e '$d' \
+  -e 's|download_file "https://download.freebsd.org/releases/${fbsd_arch}/${freebsd_ver}-RELEASE/base.txz"|download_file "$(freebsd_base_url "${fbsd_arch}" "${freebsd_ver}")"|' \
+  "$bootstrap" > "$functions"
+grep -q 'freebsd_base_url' "$functions" || { echo "Bun's FreeBSD installer changed shape; review this script."; exit 1; }
+freebsd_base_url() {
+  local current="https://download.freebsd.org/releases/$1/$2-RELEASE/base.txz"
+  if curl -fsIL -o /dev/null --max-time 30 "$current"; then echo "$current"
+  else echo "http://ftp-archive.freebsd.org/pub/FreeBSD-Archive/old-releases/$1/$2-RELEASE/base.txz"; fi
+}
+
+# Every step by default; name steps to rerun only those, e.g. `sudo setup-cross.sh freebsd`.
+steps=("$@")
+[ ${#steps[@]} -gt 0 ] || steps=(packages macos windows glibc musl android freebsd)
 
 set +eu
 . "$functions"
@@ -36,13 +50,19 @@ check_package_manager
 # Bun gates these on its CI build host; this machine is ours.
 ci=1
 
-install_packages nasm ruby-full libtool libtool-bin xz-utils unzip zip file jq skopeo binutils-aarch64-linux-gnu
-install_macos_sdk
-install_windows_sysroot
-install_linux_glibc_sysroot
-install_linux_musl_sysroot
-install_android_ndk
-install_freebsd_sysroot
+for step in "${steps[@]}"; do
+  echo "=== $step"
+  case "$step" in
+  packages) install_packages nasm ruby-full libtool libtool-bin xz-utils unzip zip file jq skopeo binutils-aarch64-linux-gnu ;;
+  macos) install_macos_sdk ;;
+  windows) install_windows_sysroot ;;
+  glibc) install_linux_glibc_sysroot ;;
+  musl) install_linux_musl_sysroot ;;
+  android) install_android_ndk ;;
+  freebsd) install_freebsd_sysroot ;;
+  *) echo "unknown step $step (packages macos windows glibc musl android freebsd)"; exit 1 ;;
+  esac
+done
 set -eu
 
 missing=0
