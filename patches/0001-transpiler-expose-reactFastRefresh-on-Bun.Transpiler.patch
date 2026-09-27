@@ -1,0 +1,145 @@
+From 2cca20a403af4bbb258436eb8f5369d61a407cf0 Mon Sep 17 00:00:00 2001
+From: Alex Kahn <alexkahndev@gmail.com>
+Date: Sun, 27 Sep 2026 16:49:45 -0400
+Subject: [PATCH] transpiler: expose reactFastRefresh on Bun.Transpiler
+
+Backport of oven-sh/bun#32951 (closed unmerged as stale), which fixes
+oven-sh/bun#32919. Bun.build() honors reactFastRefresh, but new
+Bun.Transpiler() hardcoded it off, so per-file dev servers could not get the
+$RefreshReg$/$RefreshSig$ calls React Fast Refresh needs.
+---
+ packages/bun-types/bun.d.ts                | 15 ++++++
+ src/bundler/transpiler.rs                  |  2 +
+ src/runtime/api/JSTranspiler.rs            |  6 ++-
+ test/bundler/transpiler/transpiler.test.js | 55 ++++++++++++++++++++++
+ 4 files changed, 77 insertions(+), 1 deletion(-)
+
+diff --git a/packages/bun-types/bun.d.ts b/packages/bun-types/bun.d.ts
+index d8c9402e..02f5ef50 100644
+--- a/packages/bun-types/bun.d.ts
++++ b/packages/bun-types/bun.d.ts
+@@ -2723,6 +2723,21 @@ declare module "bun" {
+     macro?: MacroMap;
+ 
+     autoImportJSX?: boolean;
++    /**
++     * Inject React Fast Refresh transforms for JSX/TSX: `$RefreshReg$` registration
++     * calls for top-level components and `$RefreshSig$` hook signatures, plus an import
++     * of `register` / `createSignatureFunctionForTransform` from `react-refresh/runtime`.
++     * No-op on non-JSX loaders and on files that declare no components or hooks.
++     *
++     * Components are keyed by the transpiler's synthetic source name (`input.tsx` or
++     * `input.jsx`, by loader), so they register as e.g. `"input.tsx:Name"`. These keys
++     * are not unique across files: when transpiling multiple files (e.g. a per-file HMR
++     * dev server), rewrite the synthetic prefix to each file's real path so same-named
++     * components in different files don't share one refresh identity.
++     *
++     * @default false
++     */
++    reactFastRefresh?: boolean;
+     allowBunRuntime?: boolean;
+     exports?: {
+       eliminate?: string[];
+diff --git a/src/bundler/transpiler.rs b/src/bundler/transpiler.rs
+index 223bb53d..de52468f 100644
+--- a/src/bundler/transpiler.rs
++++ b/src/bundler/transpiler.rs
+@@ -1604,6 +1604,8 @@ impl<'a> Transpiler<'a> {
+ 
+                 opts.features.inlining = self.options.inlining;
+                 opts.features.auto_import_jsx = self.options.auto_import_jsx;
++                opts.features.react_fast_refresh =
++                    self.options.react_fast_refresh && loader.is_jsx();
+                 // JavaScriptCore implements `using` / `await using` natively, so
+                 // when targeting Bun there is no need to lower them.
+                 opts.features.lower_using = !target.is_bun();
+diff --git a/src/runtime/api/JSTranspiler.rs b/src/runtime/api/JSTranspiler.rs
+index 726bf507..6905cf26 100644
+--- a/src/runtime/api/JSTranspiler.rs
++++ b/src/runtime/api/JSTranspiler.rs
+@@ -387,6 +387,10 @@ impl Config {
+             self.runtime.auto_import_jsx = flag;
+         }
+ 
++        if let Some(flag) = object.get_boolean_loose(global, "reactFastRefresh")? {
++            self.runtime.react_fast_refresh = flag;
++        }
++
+         if let Some(flag) = object.get_boolean_loose(global, "allowBunRuntime")? {
+             self.runtime.allow_runtime = flag;
+         }
+@@ -1074,7 +1078,7 @@ impl JSTranspiler {
+         transpiler.options.auto_import_jsx = config.runtime.auto_import_jsx;
+         transpiler.options.inlining = config.runtime.inlining;
+         transpiler.options.hot_module_reloading = config.runtime.hot_module_reloading;
+-        transpiler.options.react_fast_refresh = false;
++        transpiler.options.react_fast_refresh = config.runtime.react_fast_refresh;
+         transpiler.options.repl_mode = config.repl_mode;
+ 
+         Ok(bun_core::heap::into_raw(this))
+diff --git a/test/bundler/transpiler/transpiler.test.js b/test/bundler/transpiler/transpiler.test.js
+index a9a0d382..f10767c1 100644
+--- a/test/bundler/transpiler/transpiler.test.js
++++ b/test/bundler/transpiler/transpiler.test.js
+@@ -5533,3 +5533,58 @@ describe("multi-line comment scanning", () => {
+     expectParseError(`/*${pad600}🦊`, message);
+   });
+ });
++
++describe("Bun.Transpiler reactFastRefresh", () => {
++  const reactComponent = `
++import { useState } from "react";
++export function App() {
++  const [n, setN] = useState(0);
++  return <h1>{n}</h1>;
++}
++`;
++
++  it("is not applied by default", () => {
++    const out = new Bun.Transpiler({ loader: "tsx" }).transformSync(reactComponent);
++    expect(out).not.toContain("$RefreshReg$");
++    expect(out).not.toContain("$RefreshSig$");
++  });
++
++  it("injects $RefreshReg$/$RefreshSig$ for tsx when enabled", () => {
++    const out = new Bun.Transpiler({ loader: "tsx", reactFastRefresh: true }).transformSync(reactComponent);
++    expect(out).toContain("$RefreshReg$");
++    expect(out).toContain("$RefreshSig$");
++  });
++
++  it("injects for jsx when enabled", () => {
++    const out = new Bun.Transpiler({ loader: "jsx", reactFastRefresh: true }).transformSync(reactComponent);
++    expect(out).toContain("$RefreshReg$");
++  });
++
++  it("also works on the async transform()", async () => {
++    const out = await new Bun.Transpiler({ loader: "tsx", reactFastRefresh: true }).transform(reactComponent);
++    expect(out).toContain("$RefreshReg$");
++  });
++
++  it("respects a per-call loader override on transformSync", () => {
++    // Same source and transpiler; only the per-call loader differs, isolating the JSX-loader gate.
++    // `Foo` is componentish, so it registers under the tsx default but must not under a ts override.
++    const src = `export function Foo() { return 42; }\n`;
++    const t = new Bun.Transpiler({ loader: "tsx", reactFastRefresh: true });
++    expect(t.transformSync(src)).toContain("$RefreshReg$");
++    expect(t.transformSync(src, "ts")).not.toContain("$RefreshReg$");
++  });
++
++  it("is a no-op on non-JSX loaders even when enabled", () => {
++    // `Foo` would register under a JSX loader (see the per-call override test), so asserting it
++    // does not register here actually exercises the `loader.is_jsx()` gate rather than the name.
++    const out = new Bun.Transpiler({ loader: "ts", reactFastRefresh: true }).transformSync(
++      `export function Foo() { return 42; }\n`,
++    );
++    expect(out).not.toContain("$RefreshReg$");
++  });
++
++  it("does not inject for JSX files without components", () => {
++    const out = new Bun.Transpiler({ loader: "tsx", reactFastRefresh: true }).transformSync(`export const x = 42;\n`);
++    expect(out).not.toContain("$RefreshReg$");
++  });
++});
+-- 
+2.43.0
+

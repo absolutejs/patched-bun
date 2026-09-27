@@ -1,0 +1,5 @@
+BUN_VERSION=1.4.0
+UPSTREAM_TAG=bun-v1.4.0
+UPSTREAM_COMMIT=34cbb9a40b4bd1bd767d134a7065e66c2432a676
+RELEASE_TAG=bun-v1.4.0-absolute.1
+REPO=absolutejs/patched-bun
