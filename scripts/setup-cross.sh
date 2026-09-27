@@ -28,14 +28,34 @@ functions="$(mktemp)"
 trap 'rm -f "$functions"' EXIT
 # FreeBSD moves end-of-life releases (14.3, which Bun 1.4.0 pins) off
 # download.freebsd.org to its archive server; use the archive when needed.
+# The archive is HTTP only, so every base.txz is checked against a pinned SHA-256.
 sed -e '$d' \
-  -e 's|download_file "https://download.freebsd.org/releases/${fbsd_arch}/${freebsd_ver}-RELEASE/base.txz"|download_file "$(freebsd_base_url "${fbsd_arch}" "${freebsd_ver}")"|' \
+  -e 's|base_txz=$(download_file "https://download.freebsd.org/releases/${fbsd_arch}/${freebsd_ver}-RELEASE/base.txz")|base_txz=$(download_file "$(freebsd_base_url "${fbsd_arch}" "${freebsd_ver}")"); freebsd_check "${fbsd_arch}" "${freebsd_ver}" "$base_txz" \|\| exit 1|' \
   "$bootstrap" > "$functions"
-grep -q 'freebsd_base_url' "$functions" || { echo "Bun's FreeBSD installer changed shape; review this script."; exit 1; }
+grep -q 'freebsd_check' "$functions" || { echo "Bun's FreeBSD installer changed shape; review this script."; exit 1; }
 freebsd_base_url() {
   local current="https://download.freebsd.org/releases/$1/$2-RELEASE/base.txz"
   if curl -fsIL -o /dev/null --max-time 30 "$current"; then echo "$current"
   else echo "http://ftp-archive.freebsd.org/pub/FreeBSD-Archive/old-releases/$1/$2-RELEASE/base.txz"; fi
+}
+# SHA-256 of base.txz from each release's MANIFEST, checked against the files
+# themselves when pinned (2026-09-27).
+freebsd_check() { # freebsd_check <arch> <version> <file>
+  local expected
+  case "$1-$2" in
+  amd64-14.3) expected=e38b5cf756d60086a6c2f736eff19cc7685f7e2313e31d14342fc8df57200a92 ;;
+  arm64-14.3) expected=f83e824cb7a20dbadb2888a8bd253e6a1ac35024cc6dc8af9f3e229f75ec7129 ;;
+  *)
+    echo "No pinned checksum for FreeBSD $2 $1. Take base.txz's SHA-256 from that release's MANIFEST," >&2
+    echo "confirm the downloaded file matches it, and add it to freebsd_check in $0." >&2
+    return 1 ;;
+  esac
+  if [ -f "$3" ] && [ "$(sha256sum "$3" | cut -d' ' -f1)" = "$expected" ]; then
+    echo "  FreeBSD $2 $1 base.txz: checksum ok" >&2
+  else
+    echo "FreeBSD $2 $1 base.txz does not match its pinned SHA-256 ($expected); not installing it." >&2
+    return 1
+  fi
 }
 
 # Every step by default; name steps to rerun only those, e.g. `sudo setup-cross.sh freebsd`.
