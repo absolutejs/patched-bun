@@ -3,6 +3,10 @@ Bun 1.4.0 with `reactFastRefresh` on `new Bun.Transpiler()`: the fix for
 closed [oven-sh/bun#32951](https://github.com/oven-sh/bun/pull/32951). Everything else is stock
 Bun 1.4.0 (oven-sh/bun@34cbb9a4).
 
+This release replaces `bun-v1.4.0-absolute.1`, which was built as a Bun canary build (Bun's build
+default): it reported `1.4.0-canary.1`, enabled Bun's experimental "bake" server features and made
+`bun upgrade` track canary. These builds pass `--canary=off`, as Bun's own releases do.
+
 Built for every platform Bun's release ships, the way Bun builds them: cross-compiled from one
 Linux machine, release build, LTO where Bun enables it, nehalem baseline on x64, same zip names
 and layout. Each zip has a `-profile` companion with the unstripped binary and symbols.
