@@ -15,6 +15,8 @@ if (off.includes("$RefreshReg$")) throw new Error("refresh injected without the 
 const ts = new Bun.Transpiler({ loader: "ts", reactFastRefresh: true }).transformSync("export const a = 1;");
 if (ts.includes("$RefreshReg$")) throw new Error("refresh injected for a non-JSX loader");
 if (Bun.version !== "'"$BUN_VERSION"'") throw new Error("version " + Bun.version);
+const revision = Bun.spawnSync([process.execPath, "--revision"]).stdout.toString().trim();
+if (revision.includes("canary")) throw new Error("canary build (Bun release builds pass --canary=off): " + revision);
 console.log("reactFastRefresh ok on " + process.platform + "-" + process.arch);
 '
 expect_format() { # expect_format <name> <file(1) pattern>

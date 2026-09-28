@@ -54,7 +54,10 @@ for entry in "${ALL_TARGETS[@]}"; do
   if [ -n "$wanted" ] && [[ " $wanted " != *" $name "* ]]; then continue; fi
   triplet="bun-$name"
   dir="build/$name"
-  args=(--profile=release --os="$os" --arch="$arch" --lto="$lto" --buildDir="$dir" -j"$JOBS")
+  # --canary=off as Bun's release pipeline passes (.buildkite/ci.mjs): the
+  # default is a canary build, which reports 1.4.0-canary.1, turns on Bun's
+  # experimental "bake" server features and makes `bun upgrade` track canary.
+  args=(--profile=release --canary=off --os="$os" --arch="$arch" --lto="$lto" --buildDir="$dir" -j"$JOBS")
   [ -n "$abi" ] && args+=(--abi="$abi")
   echo "=== $triplet ($(date +%H:%M)) bun scripts/build.ts ${args[*]}" | tee -a "$log"
   start=$(date +%s)
