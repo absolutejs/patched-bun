@@ -28,8 +28,16 @@ expect_format() { # expect_format <name> <file(1) pattern>
 run_in() { # run_in <name> <docker image> <platform>
   local zip="$dist/bun-$1.zip" tmp; tmp=$(mktemp -d)
   [ -f "$zip" ] || return
+  if [ "$3" = linux/arm64 ] && [ "$(uname -m)" != aarch64 ] && [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+    echo "  skip $1: no arm64 emulation (register it with: docker run --privileged --rm tonistiigi/binfmt --install arm64)"
+    return
+  fi
   unzip -q "$zip" -d "$tmp"
-  if docker run --rm --platform "$3" -v "$tmp/bun-$1:/b:ro" "$2" /b/bun -e "$behavior" 2>&1 | sed 's/^/       /'; then :; else echo "  FAIL $1 behavior"; fail=1; fi
+  docker pull -q --platform "$3" "$2" >/dev/null
+  # Bun's musl builds need libgcc and libstdc++, as Bun's own Alpine image installs.
+  local prepare=":"; [[ "$2" == alpine* ]] && prepare="apk add -q --no-progress libgcc libstdc++ >/dev/null"
+  if docker run --rm --platform "$3" -e BEHAVIOR="$behavior" -v "$tmp/bun-$1:/b:ro" "$2" \
+    sh -c "$prepare && exec /b/bun -e \"\$BEHAVIOR\"" 2>&1 | sed 's/^/       /'; then :; else echo "  FAIL $1 behavior"; fail=1; fi
   rm -rf "$tmp"
 }
 fail=0
