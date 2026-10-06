@@ -15,10 +15,10 @@ $RefreshReg$/$RefreshSig$ calls React Fast Refresh needs.
  4 files changed, 77 insertions(+), 1 deletion(-)
 
 diff --git a/packages/bun-types/bun.d.ts b/packages/bun-types/bun.d.ts
-index d8c9402e..02f5ef50 100644
+index 0d36f8b3..2f27e257 100644
 --- a/packages/bun-types/bun.d.ts
 +++ b/packages/bun-types/bun.d.ts
-@@ -2723,6 +2723,21 @@ declare module "bun" {
+@@ -2995,6 +2995,21 @@ declare module "bun" {
      macro?: MacroMap;
  
      autoImportJSX?: boolean;
@@ -41,10 +41,10 @@ index d8c9402e..02f5ef50 100644
      exports?: {
        eliminate?: string[];
 diff --git a/src/bundler/transpiler.rs b/src/bundler/transpiler.rs
-index 223bb53d..de52468f 100644
+index 9c1b3090..5f624d60 100644
 --- a/src/bundler/transpiler.rs
 +++ b/src/bundler/transpiler.rs
-@@ -1604,6 +1604,8 @@ impl<'a> Transpiler<'a> {
+@@ -1638,6 +1638,8 @@ impl<'a> Transpiler<'a> {
  
                  opts.features.inlining = self.options.inlining;
                  opts.features.auto_import_jsx = self.options.auto_import_jsx;
@@ -54,10 +54,10 @@ index 223bb53d..de52468f 100644
                  // when targeting Bun there is no need to lower them.
                  opts.features.lower_using = !target.is_bun();
 diff --git a/src/runtime/api/JSTranspiler.rs b/src/runtime/api/JSTranspiler.rs
-index 726bf507..6905cf26 100644
+index d128f2c4..ebf82c56 100644
 --- a/src/runtime/api/JSTranspiler.rs
 +++ b/src/runtime/api/JSTranspiler.rs
-@@ -387,6 +387,10 @@ impl Config {
+@@ -369,6 +369,10 @@ impl Config {
              self.runtime.auto_import_jsx = flag;
          }
  
@@ -68,7 +68,7 @@ index 726bf507..6905cf26 100644
          if let Some(flag) = object.get_boolean_loose(global, "allowBunRuntime")? {
              self.runtime.allow_runtime = flag;
          }
-@@ -1074,7 +1078,7 @@ impl JSTranspiler {
+@@ -1051,7 +1055,7 @@ impl JSTranspiler {
          transpiler.options.auto_import_jsx = config.runtime.auto_import_jsx;
          transpiler.options.inlining = config.runtime.inlining;
          transpiler.options.hot_module_reloading = config.runtime.hot_module_reloading;
@@ -78,11 +78,11 @@ index 726bf507..6905cf26 100644
  
          Ok(bun_core::heap::into_raw(this))
 diff --git a/test/bundler/transpiler/transpiler.test.js b/test/bundler/transpiler/transpiler.test.js
-index a9a0d382..f10767c1 100644
+index 6ef74295..7076734b 100644
 --- a/test/bundler/transpiler/transpiler.test.js
 +++ b/test/bundler/transpiler/transpiler.test.js
-@@ -5533,3 +5533,58 @@ describe("multi-line comment scanning", () => {
-     expectParseError(`/*${pad600}🦊`, message);
+@@ -6117,3 +6117,58 @@ describe("same-target destructuring with an unstable target", () => {
+     expect(exitCode).toBe(0);
    });
  });
 +
@@ -140,6 +140,3 @@ index a9a0d382..f10767c1 100644
 +    expect(out).not.toContain("$RefreshReg$");
 +  });
 +});
--- 
-2.43.0
-

@@ -1,6 +1,6 @@
 # AbsoluteJS patched Bun
 
-Bun 1.4.0 plus one fix AbsoluteJS needs and upstream has not shipped yet:
+Bun 1.4.2 plus one fix AbsoluteJS needs and upstream has not shipped yet:
 **`reactFastRefresh` on `new Bun.Transpiler()`** ([oven-sh/bun#32919](https://github.com/oven-sh/bun/issues/32919),
 fix in the closed [oven-sh/bun#32951](https://github.com/oven-sh/bun/pull/32951), backported unchanged
 in [`patches/`](patches)).
