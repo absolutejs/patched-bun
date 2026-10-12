@@ -8,6 +8,7 @@
 #   scripts/build.sh                       # every target, in the order below
 #   TARGETS="linux-x64 darwin-aarch64" scripts/build.sh
 #   JOBS=8 scripts/build.sh                # parallel jobs (default: all cores)
+#   RESUME=1 scripts/build.sh              # skip targets an interrupted run finished
 #
 # Needs scripts/setup-cross.sh (once, with sudo) for the cross sysroots.
 set -euo pipefail
@@ -54,6 +55,14 @@ for entry in "${ALL_TARGETS[@]}"; do
   if [ -n "$wanted" ] && [[ " $wanted " != *" $name "* ]]; then continue; fi
   triplet="bun-$name"
   dir="build/$name"
+  # RESUME=1 picks up an interrupted run. A target is done when both of its
+  # zips are in dist and read back intact (they are written last), so only
+  # the rest are built; the interrupted target restarts from its build dir.
+  if [ "${RESUME:-}" = 1 ] && unzip -tq "$dist/$triplet.zip" >/dev/null 2>&1 \
+    && unzip -tq "$dist/$triplet-profile.zip" >/dev/null 2>&1; then
+    echo "=== $triplet already built, skipping (RESUME=1)" | tee -a "$log"
+    continue
+  fi
   # --canary=off as Bun's release pipeline passes (.buildkite/ci.mjs): the
   # default is a canary build, which reports 1.4.0-canary.1, turns on Bun's
   # experimental "bake" server features and makes `bun upgrade` track canary.
