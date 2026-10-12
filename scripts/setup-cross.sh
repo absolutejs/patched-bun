@@ -25,6 +25,48 @@ export BUN_BOOTSTRAP_REPO_REF="$UPSTREAM_COMMIT"
 
 sudo -u "$SUDO_USER" "$ROOT/scripts/source.sh" >/dev/null
 bootstrap="$SOURCE_DIR/scripts/bootstrap.sh"
+
+sysroots=(/opt/macos-sdk /opt/winsysroot /opt/linux-sysroot-glibc /opt/linux-sysroot-glibc-arm64
+  /opt/linux-sysroot-musl /opt/linux-sysroot-musl-arm64 /opt/android-ndk /opt/freebsd-sysroot /opt/freebsd-sysroot-arm64)
+check_sysroots() {
+  local missing=0 path
+  for path in "${sysroots[@]}"; do
+    if [ -d "$path" ] && [ -n "$(ls -A "$path")" ]; then echo "  ok   $path"; else echo "  MISSING $path"; missing=1; fi
+  done
+  [ $missing = 0 ] && echo "Cross-compile sysroots ready." || { echo "Some sysroots are missing; see the output above."; return 1; }
+}
+
+# Bun 1.4.3 replaced scripts/bootstrap.sh with scripts/build/ci-images/spec.ts,
+# which generates its CI images' setup instead of keeping installer functions.
+# Its pinned sysroots (macOS SDK 26.5, Windows SDK 10.0.26100, NDK r27c,
+# glibc 2.31, FreeBSD 14.3) are the ones this script already installed from
+# 1.4.x's bootstrap.sh, so on 1.4.3 only what lives inside LLVM's own resource
+# directory has to follow the new LLVM: libclang-rt-<major>-dev (from
+# `llvm.sh <major> all`) brings the Windows and Linux builtins, and the Android
+# NDK's builtins and libunwind are linked in, as spec.ts's androidNdk tool does.
+if [ ! -f "$bootstrap" ]; then
+  [ -x /usr/lib/llvm-23/bin/clang ] || { echo "LLVM 23 is not installed; run: wget https://apt.llvm.org/llvm.sh -O - | sudo bash -s -- 23 all"; exit 1; }
+  echo "=== android runtimes into $(clang --version | head -1)"
+  resource_dir="$(clang -print-resource-dir)"
+  [ -d "$resource_dir" ] || { echo "clang has no resource directory at $resource_dir; install LLVM first"; exit 1; }
+  prebuilt=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64
+  ndk_clang="$(ls "$prebuilt/lib/clang/" | head -n1)"
+  ndk_runtime="$prebuilt/lib/clang/$ndk_clang/lib/linux"
+  api_level=28
+  for arch in aarch64 x86_64; do
+    triple="$resource_dir/lib/$arch-unknown-linux-android$api_level"
+    mkdir -p "$resource_dir/lib/linux/$arch" "$triple"
+    ln -sfn "$ndk_runtime/libclang_rt.builtins-$arch-android.a" "$resource_dir/lib/linux/"
+    ln -sfn "$ndk_runtime/$arch/libunwind.a" "$resource_dir/lib/linux/$arch/"
+    ln -sfn "$ndk_runtime/libclang_rt.builtins-$arch-android.a" "$triple/libclang_rt.builtins.a"
+    ln -sfn "$ndk_runtime/$arch/libunwind.a" "$triple/libunwind.a"
+  done
+  ls "$resource_dir/lib/windows" >/dev/null 2>&1 || { echo "no Windows builtins in $resource_dir; run: wget https://apt.llvm.org/llvm.sh -O - | sudo bash -s -- 23 all"; exit 1; }
+  echo "  ok   android + windows runtimes in $resource_dir"
+  check_sysroots
+  exit $?
+fi
+
 [ "$(tail -1 "$bootstrap")" = 'main "$@"' ] || { echo "Bun's bootstrap.sh changed shape; review this script."; exit 1; }
 functions="$(mktemp)"
 trap 'rm -f "$functions"' EXIT
@@ -87,9 +129,4 @@ for step in "${steps[@]}"; do
 done
 set -eu
 
-missing=0
-for path in /opt/macos-sdk /opt/winsysroot /opt/linux-sysroot-glibc /opt/linux-sysroot-glibc-arm64 \
-  /opt/linux-sysroot-musl /opt/linux-sysroot-musl-arm64 /opt/android-ndk /opt/freebsd-sysroot /opt/freebsd-sysroot-arm64; do
-  if [ -d "$path" ] && [ -n "$(ls -A "$path")" ]; then echo "  ok   $path"; else echo "  MISSING $path"; missing=1; fi
-done
-[ $missing = 0 ] && echo "Cross-compile sysroots ready." || { echo "Some sysroots are missing; see the output above."; exit 1; }
+check_sysroots
