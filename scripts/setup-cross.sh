@@ -11,7 +11,9 @@ set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "Run with sudo: sudo $0"; exit 1; }
 [ -n "${SUDO_USER:-}" ] || { echo "Run through sudo from your own account, not as root directly."; exit 1; }
 user_home="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
-PATCHED_BUN_SOURCE="${PATCHED_BUN_SOURCE:-$user_home/.cache/patched-bun/bun-v1.4.0}"
+# The source tree of the Bun in VERSION, so its installers match the LLVM and
+# sysroots that Bun release pins (root's $HOME is not yours, hence the override).
+PATCHED_BUN_SOURCE="${PATCHED_BUN_SOURCE:-$user_home/.cache/patched-bun/$(. "$(dirname "$0")/../VERSION"; echo "$UPSTREAM_TAG")}"
 export PATCHED_BUN_SOURCE
 . "$(dirname "$0")/env.sh"
 # Bun's installers look tools up on PATH (`require bun`); root's PATH has
