@@ -4,8 +4,8 @@ set -u
 ok=1
 need() { if command -v "$1" >/dev/null 2>&1; then printf '  ok   %s\n' "$1"; else printf '  MISSING %s  (%s)\n' "$1" "$2"; ok=0; fi; }
 echo "Toolchain:"
-need clang-21 "wget https://apt.llvm.org/llvm.sh -O - | sudo bash -s -- 21 all"
-need ld.lld-21 "same LLVM 21 install"
+need clang-23 "wget https://apt.llvm.org/llvm.sh -O - | sudo bash -s -- 23 all"
+need ld.lld-23 "same LLVM 23 install"
 need cmake "sudo apt install cmake"
 need ninja "sudo apt install ninja-build"
 need go "sudo apt install golang"
@@ -17,7 +17,7 @@ need xz "sudo apt install xz-utils"
 need zip "sudo apt install zip"
 need rustup "https://rustup.rs"
 need bun "stock bun is used to run the build scripts"
-if command -v clang-21 >/dev/null; then clang-21 --version | head -1 | grep -q '21\.1\.8' || echo "  note: Bun asks for LLVM 21.1.8; found $(clang-21 --version | head -1)"; fi
+if command -v clang-23 >/dev/null; then clang-23 --version | head -1 | grep -q '23\.1\.' || echo "  note: Bun 1.4.3 asks for LLVM 23.1.x (scripts/build/ci-images/spec.ts); found $(clang-23 --version | head -1)"; fi
 free_gb=$(free -g | awk '/^Mem:/{print $7}')
 disk_gb=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
 echo "Resources: ${free_gb}GB memory available, ${disk_gb}GB disk free (budget ~10GB per target, ~120GB for all 12; close other heavy work first)"

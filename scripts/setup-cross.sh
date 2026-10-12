@@ -16,7 +16,7 @@ export PATCHED_BUN_SOURCE
 . "$(dirname "$0")/env.sh"
 # Bun's installers look tools up on PATH (`require bun`); root's PATH has
 # neither your bun nor rustup, so put your own toolchain first.
-export PATH="$user_home/.bun/bin:$user_home/.cargo/bin:/usr/lib/llvm-21/bin:$PATH"
+export PATH="$user_home/.bun/bin:$user_home/.cargo/bin:/usr/lib/llvm-23/bin:$PATH"
 command -v bun >/dev/null || { echo "bun not found in $user_home/.bun/bin"; exit 1; }
 # Fetch Bun's helper scripts (xmac.mjs) from the pinned commit, not Bun's main branch.
 export BUN_BOOTSTRAP_REPO_REF="$UPSTREAM_COMMIT"

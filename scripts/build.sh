@@ -34,7 +34,7 @@ ALL_TARGETS=(
 wanted="${TARGETS:-}"
 JOBS="${JOBS:-$(nproc)}"
 export CARGO_BUILD_JOBS="$JOBS"
-export PATH="/usr/lib/llvm-21/bin:$PATH"
+export PATH="/usr/lib/llvm-23/bin:$PATH"
 
 "$ROOT/scripts/source.sh"
 cd "$SOURCE_DIR"
