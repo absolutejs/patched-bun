@@ -41,9 +41,10 @@ check_sysroots() {
 # Its pinned sysroots (macOS SDK 26.5, Windows SDK 10.0.26100, NDK r27c,
 # glibc 2.31, FreeBSD 14.3) are the ones this script already installed from
 # 1.4.x's bootstrap.sh, so on 1.4.3 only what lives inside LLVM's own resource
-# directory has to follow the new LLVM: libclang-rt-<major>-dev (from
-# `llvm.sh <major> all`) brings the Windows and Linux builtins, and the Android
-# NDK's builtins and libunwind are linked in, as spec.ts's androidNdk tool does.
+# directory has to follow the new LLVM: the Android NDK's builtins and
+# libunwind are linked in, as spec.ts's androidNdk tool does. Windows needs
+# nothing there: Bun links it against the MSVC CRT in /opt/winsysroot, and
+# libclang-rt-23-dev no longer ships Windows builtins anyway (21's did).
 if [ ! -f "$bootstrap" ]; then
   [ -x /usr/lib/llvm-23/bin/clang ] || { echo "LLVM 23 is not installed; run: wget https://apt.llvm.org/llvm.sh -O - | sudo bash -s -- 23 all"; exit 1; }
   echo "=== android runtimes into $(clang --version | head -1)"
@@ -61,8 +62,7 @@ if [ ! -f "$bootstrap" ]; then
     ln -sfn "$ndk_runtime/libclang_rt.builtins-$arch-android.a" "$triple/libclang_rt.builtins.a"
     ln -sfn "$ndk_runtime/$arch/libunwind.a" "$triple/libunwind.a"
   done
-  ls "$resource_dir/lib/windows" >/dev/null 2>&1 || { echo "no Windows builtins in $resource_dir; run: wget https://apt.llvm.org/llvm.sh -O - | sudo bash -s -- 23 all"; exit 1; }
-  echo "  ok   android + windows runtimes in $resource_dir"
+  echo "  ok   android runtimes in $resource_dir"
   check_sysroots
   exit $?
 fi
