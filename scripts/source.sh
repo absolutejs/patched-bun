@@ -14,4 +14,5 @@ for patch in "$ROOT"/patches/*.patch; do
   git -C "$SOURCE_DIR" apply --whitespace=nowarn "$patch"
   echo "applied $(basename "$patch")"
 done
+bun "$ROOT/scripts/stamp-version.ts" "$SOURCE_DIR" "$PATCHED_VERSION"
 echo "source ready: $SOURCE_DIR"

@@ -60,3 +60,16 @@ scripts/release.sh            # push this repo, GitHub release with every zip + 
 
 Stop releasing this. In AbsoluteJS, search for `BUN-REACT-REFRESH-LEGACY` and remove every
 marked block, then raise `engines.bun` to the first Bun release that contains the fix.
+
+## Build identity
+
+The next release is `1.4.3+absolute.2` (`bun-v1.4.3+absolute.2`). `bun -v`,
+`bun --version`, and `Bun.version` embed that identity in the executable.
+`bun --revision` appends the upstream commit within the build metadata.
+The numeric upstream version remains unchanged for compatibility. Use BVM
+0.1.5 or later to install the new labels; legacy releases remain supported.
+
+`source.sh` stamps the version from `VERSION` after applying patches. Resume
+builds only reuse artifacts stamped for the same release. Verification checks
+the identity as well as React Fast Refresh behavior. Existing binaries are
+unchanged until a new build is explicitly built and installed.

@@ -28,3 +28,7 @@ signature, and Windows binaries are not Authenticode-signed, so a browser downlo
 Gatekeeper or SmartScreen prompt. Verify a manual download with `sha256sum -c SHASUMS256.txt`.
 
 This release goes away once Bun ships the fix upstream.
+
+Build identity: `bun -v` and `Bun.version` now report `1.4.3+absolute.2`.
+Install with BVM 0.1.5 or later. The `+absolute.2` suffix is SemVer build
+metadata, preserving upstream version precedence.

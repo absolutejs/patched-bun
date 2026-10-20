@@ -14,8 +14,10 @@ const off = new Bun.Transpiler({ loader: "tsx" }).transformSync("export function
 if (off.includes("$RefreshReg$")) throw new Error("refresh injected without the option");
 const ts = new Bun.Transpiler({ loader: "ts", reactFastRefresh: true }).transformSync("export const a = 1;");
 if (ts.includes("$RefreshReg$")) throw new Error("refresh injected for a non-JSX loader");
-if (Bun.version !== "'"$BUN_VERSION"'") throw new Error("version " + Bun.version);
+if (Bun.version !== "'"$PATCHED_VERSION"'") throw new Error("version " + Bun.version);
 const revision = Bun.spawnSync([process.execPath, "--revision"]).stdout.toString().trim();
+if (!revision.startsWith(Bun.version + ".")) throw new Error("revision identity " + revision);
+if (Bun.spawnSync([process.execPath, "--version"]).stdout.toString().trim() !== Bun.version) throw new Error("CLI version differs");
 if (revision.includes("canary")) throw new Error("canary build (Bun release builds pass --canary=off): " + revision);
 console.log("reactFastRefresh ok on " + process.platform + "-" + process.arch);
 '
@@ -24,6 +26,7 @@ expect_format() { # expect_format <name> <file(1) pattern>
   [ -f "$zip" ] || { echo "  skip $1 (not built)"; return; }
   unzip -q "$zip" -d "$tmp"
   local bin; bin=$(find "$tmp" -type f -name 'bun*' | head -1)
+  if ! LC_ALL=C grep -aFq "$PATCHED_VERSION" "$bin"; then echo "  FAIL $1: missing $PATCHED_VERSION identity"; fail=1; fi
   if file -b "$bin" | grep -qE "$2"; then echo "  ok   $1: $(file -b "$bin" | cut -c1-70)"; else echo "  FAIL $1: $(file -b "$bin")"; fail=1; fi
   rm -rf "$tmp"
 }

@@ -58,7 +58,7 @@ for entry in "${ALL_TARGETS[@]}"; do
   # RESUME=1 picks up an interrupted run. A target is done when both of its
   # zips are in dist and read back intact (they are written last), so only
   # the rest are built; the interrupted target restarts from its build dir.
-  if [ "${RESUME:-}" = 1 ] && unzip -tq "$dist/$triplet.zip" >/dev/null 2>&1 \
+  if [ "${RESUME:-}" = 1 ] && [ "$(cat "$dir/absolute-version" 2>/dev/null)" = "$PATCHED_VERSION" ] && unzip -tq "$dist/$triplet.zip" >/dev/null 2>&1 \
     && unzip -tq "$dist/$triplet-profile.zip" >/dev/null 2>&1; then
     echo "=== $triplet already built, skipping (RESUME=1)" | tee -a "$log"
     continue
@@ -82,6 +82,7 @@ for entry in "${ALL_TARGETS[@]}"; do
     (cd "$dir" && ./bun-profile "$SOURCE_DIR/scripts/features.mjs" >/dev/null 2>&1) || true
   fi
   zip_dir "$dir" "$triplet-profile" "bun-profile$exe" features.json "bun-profile.pdb" "bun-profile.dSYM"
+  printf '%s\n' "$PATCHED_VERSION" > "$dir/absolute-version"
   echo "=== $triplet built in $(( ($(date +%s) - start) / 60 )) min" | tee -a "$log"
 done
 
