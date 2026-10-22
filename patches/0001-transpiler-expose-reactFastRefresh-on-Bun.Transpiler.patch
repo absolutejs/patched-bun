@@ -1,24 +1,21 @@
-From 2cca20a403af4bbb258436eb8f5369d61a407cf0 Mon Sep 17 00:00:00 2001
-From: robobun <117481402+robobun@users.noreply.github.com>
-Date: Sun, 28 Jun 2026 02:50:07 +0000
+From 6845916237fdf534a2d35c0e76a26a180aec52ef Mon Sep 17 00:00:00 2001
+From: Alex Kahn <alexkahndev@gmail.com>
+Date: Thu, 22 Oct 2026 11:54:35 -0400
 Subject: [PATCH] transpiler: expose reactFastRefresh on Bun.Transpiler
 
-Backport of oven-sh/bun#32951 (closed unmerged as stale), which fixes
-oven-sh/bun#32919. Bun.build() honors reactFastRefresh, but new
-Bun.Transpiler() hardcoded it off, so per-file dev servers could not get the
-$RefreshReg$/$RefreshSig$ calls React Fast Refresh needs.
 ---
  packages/bun-types/bun.d.ts                | 15 ++++++
  src/bundler/transpiler.rs                  |  2 +
  src/runtime/api/JSTranspiler.rs            |  6 ++-
+ src/runtime/api/Transpiler.bind.ts         |  1 +
  test/bundler/transpiler/transpiler.test.js | 55 ++++++++++++++++++++++
- 4 files changed, 77 insertions(+), 1 deletion(-)
+ 5 files changed, 78 insertions(+), 1 deletion(-)
 
 diff --git a/packages/bun-types/bun.d.ts b/packages/bun-types/bun.d.ts
-index 0d36f8b3..2f27e257 100644
+index 59aa530c..87177a4d 100644
 --- a/packages/bun-types/bun.d.ts
 +++ b/packages/bun-types/bun.d.ts
-@@ -2995,6 +2995,21 @@ declare module "bun" {
+@@ -3008,6 +3008,21 @@ declare module "bun" {
      macro?: MacroMap;
  
      autoImportJSX?: boolean;
@@ -41,10 +38,10 @@ index 0d36f8b3..2f27e257 100644
      exports?: {
        eliminate?: string[];
 diff --git a/src/bundler/transpiler.rs b/src/bundler/transpiler.rs
-index 9c1b3090..5f624d60 100644
+index c5ef7f1b..d3d4bb26 100644
 --- a/src/bundler/transpiler.rs
 +++ b/src/bundler/transpiler.rs
-@@ -1638,6 +1638,8 @@ impl<'a> Transpiler<'a> {
+@@ -1526,6 +1526,8 @@ impl<'a> Transpiler<'a> {
  
                  opts.features.inlining = self.options.inlining;
                  opts.features.auto_import_jsx = self.options.auto_import_jsx;
@@ -54,21 +51,21 @@ index 9c1b3090..5f624d60 100644
                  // when targeting Bun there is no need to lower them.
                  opts.features.lower_using = !target.is_bun();
 diff --git a/src/runtime/api/JSTranspiler.rs b/src/runtime/api/JSTranspiler.rs
-index d128f2c4..ebf82c56 100644
+index 5e01edc3..9039aa10 100644
 --- a/src/runtime/api/JSTranspiler.rs
 +++ b/src/runtime/api/JSTranspiler.rs
-@@ -369,6 +369,10 @@ impl Config {
+@@ -344,6 +344,10 @@ impl Config {
              self.runtime.auto_import_jsx = flag;
          }
  
-+        if let Some(flag) = object.get_boolean_loose(global, "reactFastRefresh")? {
++        if let Some(flag) = object.react_fast_refresh {
 +            self.runtime.react_fast_refresh = flag;
 +        }
 +
-         if let Some(flag) = object.get_boolean_loose(global, "allowBunRuntime")? {
+         if let Some(flag) = object.allow_bun_runtime {
              self.runtime.allow_runtime = flag;
          }
-@@ -1051,7 +1055,7 @@ impl JSTranspiler {
+@@ -1014,7 +1018,7 @@ impl JSTranspiler {
          transpiler.options.auto_import_jsx = config.runtime.auto_import_jsx;
          transpiler.options.inlining = config.runtime.inlining;
          transpiler.options.hot_module_reloading = config.runtime.hot_module_reloading;
@@ -77,11 +74,23 @@ index d128f2c4..ebf82c56 100644
          transpiler.options.repl_mode = config.repl_mode;
  
          Ok(bun_core::heap::into_raw(this))
+diff --git a/src/runtime/api/Transpiler.bind.ts b/src/runtime/api/Transpiler.bind.ts
+index aba49ce2..5f034092 100644
+--- a/src/runtime/api/Transpiler.bind.ts
++++ b/src/runtime/api/Transpiler.bind.ts
+@@ -34,6 +34,7 @@ export const TranspilerOptions = b.dictionary(
+     tsconfig: b.any,
+     macro: b.any.emptyStringAsNull,
+     autoImportJSX: flag,
++    reactFastRefresh: flag,
+     allowBunRuntime: flag,
+     inline: { type: flag, rustName: "inlining" },
+     minifyWhitespace: flag,
 diff --git a/test/bundler/transpiler/transpiler.test.js b/test/bundler/transpiler/transpiler.test.js
-index 6ef74295..7076734b 100644
+index 2d68d354..02ec0c3d 100644
 --- a/test/bundler/transpiler/transpiler.test.js
 +++ b/test/bundler/transpiler/transpiler.test.js
-@@ -6117,3 +6117,58 @@ describe("same-target destructuring with an unstable target", () => {
+@@ -6880,3 +6880,58 @@ describe("same-target destructuring with an unstable target", () => {
      expect(exitCode).toBe(0);
    });
  });
@@ -140,3 +149,6 @@ index 6ef74295..7076734b 100644
 +    expect(out).not.toContain("$RefreshReg$");
 +  });
 +});
+-- 
+2.43.0
+
