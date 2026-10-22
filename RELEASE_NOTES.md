@@ -1,11 +1,11 @@
-Bun 1.4.3 with `reactFastRefresh` on `new Bun.Transpiler()`: the fix for
+Bun 1.4.4 with `reactFastRefresh` on `new Bun.Transpiler()`: the fix for
 [oven-sh/bun#32919](https://github.com/oven-sh/bun/issues/32919), from the closed
 [oven-sh/bun#32951](https://github.com/oven-sh/bun/pull/32951). Everything else is stock
-Bun 1.4.3 (oven-sh/bun@c6da4a4d). Stock Bun 1.4.3 still ignores the option: its React Fast
-Refresh fixes are in the dev server and `bun build --react-fast-refresh`, not `Bun.Transpiler`.
+Bun 1.4.4 (oven-sh/bun@38afee6c). Stock Bun 1.4.4 still ignores the option.
 
-The patch applies to 1.4.3 unchanged, regression test included. 1.4.3 brings `bun check`, which
-`absolute typecheck` uses from this version on.
+1.4.4 reads `Bun.Transpiler` options through a generated binding instead of loose property
+lookups, so the patch now adds `reactFastRefresh` to that binding (`Transpiler.bind.ts`) and reads
+it alongside the other options. Its regression test is unchanged.
 
 Built for every platform Bun's release ships, the way Bun builds them: cross-compiled from one
 Linux machine, release build, LTO where Bun enables it, nehalem baseline on x64, same zip names
