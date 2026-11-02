@@ -1,13 +1,19 @@
 # AbsoluteJS patched Bun
 
-Bun 1.4.3 plus one fix AbsoluteJS needs and upstream has not shipped yet:
-**`reactFastRefresh` on `new Bun.Transpiler()`** ([oven-sh/bun#32919](https://github.com/oven-sh/bun/issues/32919),
-fix in the closed [oven-sh/bun#32951](https://github.com/oven-sh/bun/pull/32951), backported unchanged
-in [`patches/`](patches)).
+Bun 1.4.4 plus two changes AbsoluteJS needs and upstream has not shipped, both in
+[`patches/`](patches):
 
-Without it, React edits in `absolute dev` fall back to a full page reload and lose component
-state, because `Bun.Transpiler` never injects the `$RefreshReg$` / `$RefreshSig$` calls React
-Fast Refresh needs.
+1. **`reactFastRefresh` on `new Bun.Transpiler()`** ([oven-sh/bun#32919](https://github.com/oven-sh/bun/issues/32919),
+   fix from the closed [oven-sh/bun#32951](https://github.com/oven-sh/bun/pull/32951)). Without it,
+   React edits in `absolute dev` fall back to a full page reload and lose component state, because
+   `Bun.Transpiler` never injects the `$RefreshReg$` / `$RefreshSig$` calls React Fast Refresh needs.
+2. **`lockdown()` in `bun:jsc`** (since `1.4.4+absolute.2`). Inside a Worker it removes the `Bun`
+   global and `ShadowRealm` and makes every later `import()` reject. Stock Bun gives sandboxed
+   code in a Worker two ways back to host authority that JavaScript cannot close: `Bun` is
+   non-configurable on every Worker global (indirect eval and the `Function` constructor reach it),
+   and `import("node:child_process")` or `import("bun:ffi")` loads any module.
+   `@absolutejs/isolated-jsc` calls it after hardening a Worker-backend isolate. Outside a Worker it
+   throws.
 
 ## What is in this repo
 
@@ -52,18 +58,20 @@ optimization traced in Bun's CI) is not used.
 sudo scripts/setup-cross.sh   # once: macOS SDK, Windows sysroot, glibc/musl/Android/FreeBSD sysroots (Bun's own installers)
 scripts/preflight.sh          # toolchain, memory and disk check
 scripts/build.sh              # every target; TARGETS="linux-x64 darwin-aarch64" for a subset
-scripts/verify.sh             # formats, React refresh behavior (native, and Docker for musl/arm64), checksums
+scripts/verify.sh             # formats, React refresh and lockdown behavior (native, and Docker for musl/arm64), checksums
 scripts/release.sh            # push this repo, GitHub release with every zip + SHASUMS256.txt
 ```
 
-## When upstream ships the fix
+## When upstream ships the fixes
 
-Stop releasing this. In AbsoluteJS, search for `BUN-REACT-REFRESH-LEGACY` and remove every
-marked block, then raise `engines.bun` to the first Bun release that contains the fix.
+Drop a patch once Bun ships its equivalent; stop releasing this when both are upstream. For the
+refresh fix, search AbsoluteJS for `BUN-REACT-REFRESH-LEGACY` and remove every marked block, then
+raise `engines.bun` to the first Bun release that contains it. For `lockdown()`, isolated-jsc
+detects it at runtime, so only its docs and the `requireLockdown` error message need updating.
 
 ## Build identity
 
-The next release is `1.4.3+absolute.2` (`bun-v1.4.3+absolute.2`). `bun -v`,
+The current release is `1.4.4+absolute.2` (`bun-v1.4.4+absolute.2`). `bun -v`,
 `bun --version`, and `Bun.version` embed that identity in the executable.
 `bun --revision` appends the upstream commit within the build metadata.
 The numeric upstream version remains unchanged for compatibility. Use BVM
@@ -71,5 +79,5 @@ The numeric upstream version remains unchanged for compatibility. Use BVM
 
 `source.sh` stamps the version from `VERSION` after applying patches. Resume
 builds only reuse artifacts stamped for the same release. Verification checks
-the identity as well as React Fast Refresh behavior. Existing binaries are
+the identity as well as React Fast Refresh and lockdown behavior. Existing binaries are
 unchanged until a new build is explicitly built and installed.

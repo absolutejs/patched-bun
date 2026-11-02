@@ -1,5 +1,5 @@
 BUN_VERSION=1.4.4
 UPSTREAM_TAG=bun-v1.4.4
 UPSTREAM_COMMIT=38afee6c84fcf48c0edb2466aa4b27d287a59c30
-RELEASE_TAG=bun-v1.4.4+absolute.1
+RELEASE_TAG=bun-v1.4.4+absolute.2
 REPO=absolutejs/patched-bun

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Checks every built artifact. The patch is platform-independent Rust, so the
-# behavior test runs where the binary can run: natively for linux-x64, and in
+# Checks every built artifact. The patches are platform-independent (Rust and
+# C++), so the behavior tests (React refresh, Worker lockdown) run where the binary can run: natively for linux-x64, and in
 # Docker for musl (Alpine) and arm64 (when QEMU binfmt is registered). The
 # rest are checked for the right file format and architecture.
 set -euo pipefail
@@ -20,6 +20,15 @@ if (!revision.startsWith(Bun.version + ".")) throw new Error("revision identity 
 if (Bun.spawnSync([process.execPath, "--version"]).stdout.toString().trim() !== Bun.version) throw new Error("CLI version differs");
 if (revision.includes("canary")) throw new Error("canary build (Bun release builds pass --canary=off): " + revision);
 console.log("reactFastRefresh ok on " + process.platform + "-" + process.arch);
+const { lockdown } = await import("bun:jsc");
+let outside = "allowed"; try { lockdown(); } catch (error) { outside = error.message; }
+if (outside !== "lockdown() can only be called inside a Worker" || typeof Bun !== "object") throw new Error("lockdown outside a Worker: " + outside);
+const workerSource = `import { lockdown } from "bun:jsc"; lockdown(); postMessage({ bun: (0, eval)("typeof Bun"), fn: new Function("return typeof Bun")(), realm: typeof ShadowRealm, load: await import("node:child_process").then(() => "loaded", (error) => error.message) });`;
+const worker = new Worker(URL.createObjectURL(new Blob([workerSource], { type: "application/javascript" })));
+const locked = await new Promise((resolve, reject) => { worker.onmessage = (event) => resolve(event.data); worker.onerror = reject; });
+worker.terminate();
+if (JSON.stringify(locked) !== JSON.stringify({ bun: "undefined", fn: "undefined", realm: "undefined", load: "import() is disabled in this realm by lockdown()" })) throw new Error("lockdown did not hold: " + JSON.stringify(locked));
+console.log("lockdown ok on " + process.platform + "-" + process.arch);
 '
 expect_format() { # expect_format <name> <file(1) pattern>
   local zip="$dist/bun-$1.zip" tmp; tmp=$(mktemp -d)
@@ -64,6 +73,7 @@ if [ -f "$dist/bun-linux-x64.zip" ]; then
   tmp=$(mktemp -d); unzip -q "$dist/bun-linux-x64.zip" -d "$tmp"
   "$tmp/bun-linux-x64/bun" -e "$behavior" | sed 's/^/       /' || fail=1
   (cd "$SOURCE_DIR" && "$tmp/bun-linux-x64/bun" test test/bundler/transpiler/transpiler.test.js 2>&1 | tail -3 | sed 's/^/       /')
+  (cd "$SOURCE_DIR" && "$tmp/bun-linux-x64/bun" test ./test/js/bun/jsc/lockdown.test.ts 2>&1 | tail -3 | sed 's/^/       /')
   rm -rf "$tmp"
 fi
 if command -v docker >/dev/null; then

@@ -1,0 +1,208 @@
+diff --git a/packages/bun-types/jsc.d.ts b/packages/bun-types/jsc.d.ts
+index d97a48b7..68d220bd 100644
+--- a/packages/bun-types/jsc.d.ts
++++ b/packages/bun-types/jsc.d.ts
+@@ -100,6 +100,31 @@ declare module "bun:jsc" {
+    */
+   function heapSize(): number;
+ 
++  /**
++   * Prepares the current Worker to run code it does not trust. Removes the
++   * `Bun` global (which JavaScript cannot delete, so indirect `eval` and the
++   * `Function` constructor would otherwise still reach it) and `ShadowRealm`,
++   * and makes every later `import()` in the Worker reject.
++   *
++   * Modules the Worker imported before the call stay usable, so import what
++   * you need first, keep references to the globals you still need, delete the
++   * configurable ones (`fetch`, `process`, `require`, ...) yourself, then call
++   * `lockdown()` before running the untrusted code. It cannot be undone.
++   *
++   * Throws when called outside a Worker.
++   *
++   * @example
++   * ```ts
++   * import { heapSize, lockdown } from "bun:jsc";
++   * const send = postMessage;
++   * delete globalThis.fetch;
++   * lockdown();
++   * (0, eval)("typeof Bun"); // "undefined"
++   * await import("node:fs"); // rejects with TypeError
++   * ```
++   */
++  function lockdown(): void;
++
+   /**
+    * Returns statistics about the JavaScript heap, including a count of the
+    * live objects of each type. See {@link HeapStats} for what each field
+diff --git a/src/jsc/bindings/ZigGlobalObject.cpp b/src/jsc/bindings/ZigGlobalObject.cpp
+index 7f4ae0c3..46d18585 100644
+--- a/src/jsc/bindings/ZigGlobalObject.cpp
++++ b/src/jsc/bindings/ZigGlobalObject.cpp
+@@ -3720,6 +3720,14 @@ JSC::JSPromise* GlobalObject::moduleLoaderImportModule(JSGlobalObject* jsGlobalO
+     VM& vm = JSC::getVM(globalObject);
+     auto scope = DECLARE_THROW_SCOPE(vm);
+ 
++    // After `lockdown()` from "bun:jsc", code in this global can no longer load
++    // modules: a sandbox that strips host globals would otherwise hand them back
++    // through `import("node:child_process")` or `import("bun:ffi")`.
++    if (defaultGlobalObject(globalObject)->m_moduleLoadingLockedDown) [[unlikely]] {
++        throwTypeError(globalObject, scope, "import() is disabled in this realm by lockdown()"_s);
++        return JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope);
++    }
++
+     {
+         JSC::JSPromise* result = NodeVM::importModule(globalObject, moduleNameValue, parameters, sourceOrigin);
+         RETURN_IF_EXCEPTION(scope, nullptr);
+diff --git a/src/jsc/bindings/ZigGlobalObject.h b/src/jsc/bindings/ZigGlobalObject.h
+index a829e8b3..0d8b1a6c 100644
+--- a/src/jsc/bindings/ZigGlobalObject.h
++++ b/src/jsc/bindings/ZigGlobalObject.h
+@@ -366,6 +366,9 @@ public:
+     Ref<Bun::GlobalEventScope> globalEventScope;
+     RefPtr<WebCore::MessagePort> m_nodeParentPort;
+     bool m_nodeWorkerEntrySettled { false };
++    // Set by `lockdown()` from "bun:jsc": once true, every import() in this
++    // global rejects. One-way.
++    bool m_moduleLoadingLockedDown { false };
+ 
+     void resetOnEachMicrotaskTick();
+ 
+diff --git a/src/jsc/modules/BunJSCModule.h b/src/jsc/modules/BunJSCModule.h
+index da51a37f..2c6a08b9 100644
+--- a/src/jsc/modules/BunJSCModule.h
++++ b/src/jsc/modules/BunJSCModule.h
+@@ -991,10 +991,45 @@ JSC_DEFINE_HOST_FUNCTION(functionBytecodeOrderStats, (JSGlobalObject * globalObj
+     return JSValue::encode(result);
+ }
+ 
++// lockdown(): for a Worker that is about to run code it does not trust. Removes
++// the `Bun` global (which is non-configurable, so JavaScript cannot delete it and
++// indirect eval or the Function constructor would still reach it) and makes every
++// later import() in the Worker reject. It also removes `ShadowRealm`, whose fresh
++// realm would carry a new `Bun`. Modules the Worker imported statically
++// before calling it stay usable; `require` is an ordinary configurable global the
++// caller deletes itself. One-way and idempotent. Only allowed inside a Worker,
++// where it cannot break the process.
++JSC_DEFINE_HOST_FUNCTION(functionLockdown, (JSGlobalObject * globalObject, CallFrame*))
++{
++    VM& vm = globalObject->vm();
++    auto scope = DECLARE_THROW_SCOPE(vm);
++    auto* zigGlobalObject = defaultGlobalObject(globalObject);
++    if (!WebCore::clientData(vm)->isWorkerVM()) {
++        throwTypeError(globalObject, scope, "lockdown() can only be called inside a Worker"_s);
++        return {};
++    }
++
++    zigGlobalObject->m_moduleLoadingLockedDown = true;
++
++    {
++        VM::DeletePropertyModeScope deleteScope(vm, VM::DeletePropertyMode::IgnoreConfigurable);
++        DeletePropertySlot bunSlot;
++        zigGlobalObject->methodTable()->deleteProperty(zigGlobalObject, zigGlobalObject, Identifier::fromString(vm, "Bun"_s), bunSlot);
++        RETURN_IF_EXCEPTION(scope, {});
++        // A ShadowRealm gets a fresh global with its own `Bun`, and returns
++        // callables from it, so it would hand the authority straight back.
++        DeletePropertySlot shadowRealmSlot;
++        zigGlobalObject->methodTable()->deleteProperty(zigGlobalObject, zigGlobalObject, Identifier::fromString(vm, "ShadowRealm"_s), shadowRealmSlot);
++        RETURN_IF_EXCEPTION(scope, {});
++    }
++
++    return JSValue::encode(jsUndefined());
++}
++
+ namespace Zig {
+ DEFINE_NATIVE_MODULE(BunJSC)
+ {
+-    INIT_NATIVE_MODULE(BunJSC, 37);
++    INIT_NATIVE_MODULE(BunJSC, 38);
+ 
+     putNativeFn(Identifier::fromString(vm, "bytecodeOrderStats"_s), functionBytecodeOrderStats);
+ 
+@@ -1012,6 +1047,7 @@ DEFINE_NATIVE_MODULE(BunJSC)
+     putNativeFn(Identifier::fromString(vm, "samplingProfilerStackTraces"_s), functionSamplingProfilerStackTraces);
+     putNativeFn(Identifier::fromString(vm, "noInline"_s), functionNeverInlineFunction);
+     putNativeFn(Identifier::fromString(vm, "isRope"_s), functionIsRope);
++    putNativeFn(Identifier::fromString(vm, "lockdown"_s), functionLockdown);
+     putNativeFn(Identifier::fromString(vm, "memoryUsage"_s), functionCreateMemoryFootprint);
+     putNativeFn(Identifier::fromString(vm, "noFTL"_s), functionNoFTL);
+     putNativeFn(Identifier::fromString(vm, "noOSRExitFuzzing"_s), functionNoOSRExitFuzzing);
+diff --git a/test/js/bun/jsc/lockdown-fixture.ts b/test/js/bun/jsc/lockdown-fixture.ts
+new file mode 100644
+index 00000000..115e54c7
+--- /dev/null
++++ b/test/js/bun/jsc/lockdown-fixture.ts
+@@ -0,0 +1,36 @@
++import { heapSize, lockdown } from "bun:jsc";
++import { readFileSync } from "node:fs";
++
++const send = postMessage;
++const probe = async (code: string) => {
++  try {
++    return String(await (0, eval)(code));
++  } catch (error) {
++    return `threw ${(error as Error).name}: ${(error as Error).message}`;
++  }
++};
++
++const before = {
++  bun: await probe("typeof Bun"),
++  importFs: await probe("import('node:fs').then(m => typeof m.readFileSync)"),
++};
++
++lockdown();
++lockdown();
++
++send({
++  before,
++  after: {
++    bun: await probe("typeof Bun"),
++    indirectEval: await probe("typeof (0, eval)('Bun')"),
++    functionConstructor: await probe("typeof new Function('return Bun')()"),
++    globalThisBun: await probe("typeof globalThis.Bun"),
++    shadowRealm: await probe("typeof ShadowRealm"),
++    importFs: await probe("import('node:fs').then(m => typeof m.readFileSync)"),
++    importChildProcess: await probe("import('node:child_process').then(m => typeof m.spawnSync)"),
++    importFfi: await probe("import('bun:ffi').then(m => typeof m.dlopen)"),
++    staticImportStillWorks: typeof readFileSync,
++    heapSizeStillWorks: typeof heapSize(),
++    webApisStillWork: await probe("typeof new Response('ok').text"),
++  },
++});
+diff --git a/test/js/bun/jsc/lockdown.test.ts b/test/js/bun/jsc/lockdown.test.ts
+new file mode 100644
+index 00000000..66340e3d
+--- /dev/null
++++ b/test/js/bun/jsc/lockdown.test.ts
+@@ -0,0 +1,32 @@
++import { expect, test } from "bun:test";
++import { lockdown } from "bun:jsc";
++
++test("lockdown() throws outside a Worker", () => {
++  expect(() => lockdown()).toThrow("lockdown() can only be called inside a Worker");
++  expect(typeof Bun).toBe("object");
++});
++
++test("lockdown() removes Bun and ShadowRealm and disables import() in a Worker", async () => {
++  const worker = new Worker(new URL("./lockdown-fixture.ts", import.meta.url).href);
++  const { promise, resolve, reject } = Promise.withResolvers<any>();
++  worker.onmessage = event => resolve(event.data);
++  worker.onerror = event => reject(event);
++  const result = await promise;
++  worker.terminate();
++
++  expect(result.before).toEqual({ bun: "object", importFs: "function" });
++  const rejected = "threw TypeError: import() is disabled in this realm by lockdown()";
++  expect(result.after).toEqual({
++    bun: "undefined",
++    indirectEval: "threw ReferenceError: Bun is not defined",
++    functionConstructor: "threw ReferenceError: Bun is not defined",
++    globalThisBun: "undefined",
++    shadowRealm: "undefined",
++    importFs: rejected,
++    importChildProcess: rejected,
++    importFfi: rejected,
++    staticImportStillWorks: "function",
++    heapSizeStillWorks: "number",
++    webApisStillWork: "function",
++  });
++});
